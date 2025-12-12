@@ -225,7 +225,9 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # 更新日
         
         # ソート有効化
-        table.setSortingEnabled(True)
+        # Note: Enabling built-in sorting can raise a TypeError in some PySide/Python bindings
+        # (object of type 'bool' has no len()). Rely on DB-level sorting instead.
+        table.setSortingEnabled(False)
         header.sectionClicked.connect(self.on_header_clicked)
         
         # ダブルクリックで詳細表示（Phase 2で実装）
@@ -240,7 +242,27 @@ class MainWindow(QMainWindow):
                 order_by=self.current_sort_column,
                 order_desc=self.current_sort_desc
             )
+        # 戻り値の型を安全に扱う: リストでない場合は空リストへ正規化
+        if isinstance(papers, dict):
+            papers = [papers]
+        elif isinstance(papers, bool):
+            papers = []
+        elif papers is None:
+            papers = []
+        elif not isinstance(papers, list):
+            try:
+                papers = list(papers)
+            except Exception:
+                papers = []
         
+        # Fall-back: if zero results but DB contains data, retry fetch
+        if len(papers) == 0:
+            total_db = self.db.get_paper_count()
+            if total_db > 0:
+                papers = self.db.get_all_papers(
+                    order_by=self.current_sort_column,
+                    order_desc=self.current_sort_desc
+                )
         self.table.setRowCount(len(papers))
         
         for row_idx, paper in enumerate(papers):
@@ -270,7 +292,12 @@ class MainWindow(QMainWindow):
         # ステータスバー更新
         count = len(papers)
         total = self.db.get_paper_count()
-        self.statusBar().showMessage(f"表示: {count}件 / 全{total}件")
+        if count == 0 and total > 0:
+            self.statusBar().showMessage(
+                f"表示: 0件 / 全{total}件 (データは存在します。検索条件を確認してください)"
+            )
+        else:
+            self.statusBar().showMessage(f"表示: {count}件 / 全{total}件")
     
     def on_header_clicked(self, logical_index):
         """ヘッダークリック時のソート処理"""
