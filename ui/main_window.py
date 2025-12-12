@@ -25,6 +25,10 @@ class MainWindow(QMainWindow):
         self.db = Database()
         self.current_sort_column = "id"
         self.current_sort_desc = False
+        
+        # 自動バックアップ実行
+        self.perform_auto_backup()
+        
         self.init_ui()
         self.load_papers()
     
@@ -70,6 +74,18 @@ class MainWindow(QMainWindow):
         new_action.setShortcut(QKeySequence("Ctrl+N"))
         new_action.triggered.connect(self.add_paper)
         file_menu.addAction(new_action)
+        
+        file_menu.addSeparator()
+        
+        # エクスポート
+        export_action = QAction("CSVエクスポート(&E)", self)
+        export_action.triggered.connect(self.export_csv)
+        file_menu.addAction(export_action)
+        
+        # インポート
+        import_action = QAction("CSVインポート(&I)", self)
+        import_action.triggered.connect(self.import_csv)
+        file_menu.addAction(import_action)
         
         file_menu.addSeparator()
         
@@ -477,8 +493,28 @@ class MainWindow(QMainWindow):
                 )
     
     def show_detail(self):
-        """詳細表示（Phase 2で実装）"""
-        QMessageBox.information(self, "情報", "詳細表示機能はPhase 2で実装予定です")
+        """詳細表示"""
+        selected_row = self.table.currentRow()
+        if selected_row < 0:
+            QMessageBox.warning(self, "警告", "表示する論文を選択してください")
+            return
+        
+        # 選択された論文のIDを取得
+        paper_id = int(self.table.item(selected_row, 0).text())
+        paper_data = self.db.get_paper(paper_id)
+        
+        if not paper_data:
+            QMessageBox.critical(self, "エラー", "論文データの取得に失敗しました")
+            return
+        
+        from ui.detail_dialog import DetailDialog
+        
+        dialog = DetailDialog(self, paper_data)
+        result = dialog.exec()
+        
+        # リターンコード2は編集要求
+        if result == 2:
+            self.edit_paper()
     
     def backup_database(self):
         """データベースバックアップ"""
@@ -490,6 +526,73 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "成功", f"バックアップを作成しました:\n{backup_path}")
         else:
             QMessageBox.critical(self, "エラー", "バックアップに失敗しました")
+    
+    def perform_auto_backup(self):
+        """自動バックアップ実行"""
+        try:
+            self.db.auto_backup(max_backups=5)
+            print("自動バックアップ完了")
+        except Exception as e:
+            print(f"自動バックアップエラー: {e}")
+    
+    def export_csv(self):
+        """CSVエクスポート"""
+        from PySide6.QtWidgets import QFileDialog
+        from datetime import datetime
+        
+        default_name = f"papers_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "CSVファイルをエクスポート",
+            default_name,
+            "CSV Files (*.csv);;All Files (*)"
+        )
+        
+        if file_path:
+            if self.db.export_to_csv(file_path):
+                count = self.db.get_paper_count()
+                QMessageBox.information(
+                    self,
+                    "成功",
+                    f"{count}件のデータをエクスポートしました:\n{file_path}"
+                )
+            else:
+                QMessageBox.critical(self, "エラー", "エクスポートに失敗しました")
+    
+    def import_csv(self):
+        """CSVインポート"""
+        from PySide6.QtWidgets import QFileDialog
+        
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "CSVファイルをインポート",
+            "",
+            "CSV Files (*.csv);;All Files (*)"
+        )
+        
+        if file_path:
+            reply = QMessageBox.question(
+                self,
+                "確認",
+                "CSVファイルからデータをインポートします。\n"
+                "既存のデータには影響しません。\n\n"
+                "続行しますか？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                success, error = self.db.import_from_csv(file_path)
+                
+                if success > 0 or error > 0:
+                    QMessageBox.information(
+                        self,
+                        "インポート完了",
+                        f"成功: {success}件\n失敗: {error}件"
+                    )
+                    self.load_papers()
+                else:
+                    QMessageBox.critical(self, "エラー", "インポートに失敗しました")
     
     def show_about(self):
         """バージョン情報表示"""

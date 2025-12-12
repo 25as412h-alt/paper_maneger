@@ -5,7 +5,7 @@ SQLiteを使用して論文データを管理
 import sqlite3
 import os
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
 
 class Database:
@@ -305,6 +305,131 @@ class Database:
         except Exception as e:
             print(f"バックアップエラー: {e}")
             return False
+    
+    def auto_backup(self, max_backups: int = 5) -> bool:
+        """
+        自動バックアップ（最大N世代保持）
+        
+        Args:
+            max_backups: 保持する最大バックアップ数
+            
+        Returns:
+            成功時True
+        """
+        from datetime import datetime
+        import glob
+        
+        try:
+            backup_dir = "data/backups"
+            os.makedirs(backup_dir, exist_ok=True)
+            
+            # 新しいバックアップを作成
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_name = f"papers_auto_{timestamp}.db"
+            backup_path = os.path.join(backup_dir, backup_name)
+            
+            if not self.backup_database(backup_path):
+                return False
+            
+            # 古いバックアップを削除
+            pattern = os.path.join(backup_dir, "papers_auto_*.db")
+            backups = sorted(glob.glob(pattern), reverse=True)
+            
+            # 最大数を超えた古いバックアップを削除
+            for old_backup in backups[max_backups:]:
+                try:
+                    os.remove(old_backup)
+                    print(f"古いバックアップを削除: {old_backup}")
+                except Exception as e:
+                    print(f"バックアップ削除エラー: {e}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"自動バックアップエラー: {e}")
+            return False
+    
+    def export_to_csv(self, csv_path: str) -> bool:
+        """
+        データをCSVにエクスポート
+        
+        Args:
+            csv_path: CSVファイルパス
+            
+        Returns:
+            成功時True
+        """
+        import csv
+        
+        try:
+            papers = self.get_all_papers()
+            
+            with open(csv_path, 'w', newline='', encoding='utf-8-sig') as f:
+                if not papers:
+                    return True
+                
+                # ヘッダー作成
+                fieldnames = list(papers[0].keys())
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                
+                writer.writeheader()
+                writer.writerows(papers)
+            
+            return True
+            
+        except Exception as e:
+            print(f"CSVエクスポートエラー: {e}")
+            return False
+    
+    def import_from_csv(self, csv_path: str) -> Tuple[int, int]:
+        """
+        CSVからデータをインポート
+        
+        Args:
+            csv_path: CSVファイルパス
+            
+        Returns:
+            (成功件数, 失敗件数) のタプル
+        """
+        import csv
+        
+        success_count = 0
+        error_count = 0
+        
+        try:
+            with open(csv_path, 'r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                
+                for row in reader:
+                    try:
+                        # 年の処理
+                        year = None
+                        if row.get('year'):
+                            try:
+                                year = int(row['year'])
+                            except ValueError:
+                                year = None
+                        
+                        # データ追加
+                        self.add_paper(
+                            title=row.get('title', ''),
+                            author=row.get('author', ''),
+                            year=year,
+                            pdf_path=row.get('pdf_path', ''),
+                            image_path=row.get('image_path', ''),
+                            memo=row.get('memo', '')
+                        )
+                        success_count += 1
+                        
+                    except Exception as e:
+                        print(f"行のインポートエラー: {e}")
+                        error_count += 1
+            
+            return success_count, error_count
+            
+        except Exception as e:
+            print(f"CSVインポートエラー: {e}")
+            return 0, 0
 
 
 # テスト用コード
