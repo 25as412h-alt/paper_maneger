@@ -1,213 +1,211 @@
-import React, { useEffect, useState } from 'react';
-import { useSearchParams, Link } from 'react-router-dom';
-import PaperCard from '../components/paper/PaperCard';
-import { Loading, Button, Dropdown } from '../components/common/Button';
-import { useApp } from '../contexts/AppContext';
+import React, { useState, useEffect } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import toast from 'react-hot-toast';
 
 function PaperList() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const { tags } = useApp();
-  
   const [papers, setPapers] = useState([]);
+  const [filteredPapers, setFilteredPapers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sortBy, setSortBy] = useState(searchParams.get('sort') || 'newest');
-  const [filterTag, setFilterTag] = useState(searchParams.get('tag') || '');
-  const [filterUnorganized, setFilterUnorganized] = useState(
-    searchParams.get('filter') === 'unorganized'
-  );
-
+  const [selectedTag, setSelectedTag] = useState('');
+  const [sortBy, setSortBy] = useState('created_at');
+  
+  const [searchParams] = useSearchParams();
+  
   useEffect(() => {
     loadPapers();
-  }, [sortBy, filterTag, filterUnorganized]);
-
+    
+    // URLパラメータからタグ取得
+    const tagParam = searchParams.get('tag');
+    if (tagParam) {
+      setSelectedTag(tagParam);
+    }
+  }, [searchParams]);
+  
+  useEffect(() => {
+    filterAndSortPapers();
+  }, [papers, selectedTag, sortBy]);
+  
   const loadPapers = async () => {
     try {
-      setLoading(true);
-      
-      const filters = {
-        sortBy,
-        tag: filterTag || undefined
-      };
-
-      let result;
-      if (filterUnorganized) {
-        result = await window.electronAPI.papers.getUnorganized(100);
-      } else {
-        result = await window.electronAPI.papers.getAll(filters);
-      }
-
-      setPapers(result);
+      const allPapers = await window.api.papers.findAll();
+      setPapers(allPapers);
+      setLoading(false);
     } catch (error) {
-      console.error('Failed to load papers:', error);
-    } finally {
+      console.error('論文読み込みエラー:', error);
+      toast.error('論文の読み込みに失敗しました');
       setLoading(false);
     }
   };
-
-  const handleSortChange = (value) => {
-    setSortBy(value);
-    searchParams.set('sort', value);
-    setSearchParams(searchParams);
-  };
-
-  const handleTagFilter = (tag) => {
-    setFilterTag(tag);
-    setFilterUnorganized(false);
-    if (tag) {
-      searchParams.set('tag', tag);
-    } else {
-      searchParams.delete('tag');
+  
+  const filterAndSortPapers = () => {
+    let filtered = [...papers];
+    
+    // タグでフィルタ
+    if (selectedTag) {
+      filtered = filtered.filter(paper => 
+        paper.tags && paper.tags.includes(selectedTag)
+      );
     }
-    searchParams.delete('filter');
-    setSearchParams(searchParams);
+    
+    // ソート
+    filtered.sort((a, b) => {
+      switch (sortBy) {
+        case 'created_at':
+          return new Date(b.created_at) - new Date(a.created_at);
+        case 'title':
+          return a.title.localeCompare(b.title);
+        case 'year':
+          return (b.year || 0) - (a.year || 0);
+        default:
+          return 0;
+      }
+    });
+    
+    setFilteredPapers(filtered);
   };
-
-  const handleUnorganizedFilter = () => {
-    setFilterUnorganized(!filterUnorganized);
-    setFilterTag('');
-    searchParams.delete('tag');
-    if (!filterUnorganized) {
-      searchParams.set('filter', 'unorganized');
-    } else {
-      searchParams.delete('filter');
+  
+  const handleOpenPDF = async (pdfPath) => {
+    try {
+      await window.api.openPDF(pdfPath);
+    } catch (error) {
+      toast.error('PDFを開けませんでした');
     }
-    setSearchParams(searchParams);
   };
-
-  const clearFilters = () => {
-    setFilterTag('');
-    setFilterUnorganized(false);
-    setSearchParams({});
-  };
-
+  
+  // 全タグ取得
+  const allTags = [...new Set(papers.flatMap(p => p.tags || []))].sort();
+  
   if (loading) {
-    return <Loading />;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-500">読み込み中...</div>
+      </div>
+    );
   }
-
+  
   return (
-    <div className="max-w-7xl mx-auto">
+    <div className="max-w-6xl mx-auto">
       {/* ヘッダー */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="text-3xl font-bold text-gray-900">
-            📚 論文一覧
-          </h1>
-          <Link to="/upload">
-            <Button>+ 論文を追加</Button>
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-800 mb-2">
+          📚 論文一覧 ({filteredPapers.length}件)
+        </h1>
+      </div>
+      
+      {/* フィルタ・ソート */}
+      <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
+        <div className="flex items-center justify-between">
+          {/* タグフィルタ */}
+          <div className="flex items-center space-x-3">
+            <label className="text-sm font-medium text-gray-700">フィルタ:</label>
+            <select
+              value={selectedTag}
+              onChange={(e) => setSelectedTag(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">全タグ</option>
+              {allTags.map(tag => (
+                <option key={tag} value={tag}>#{tag}</option>
+              ))}
+            </select>
+            
+            {selectedTag && (
+              <button
+                onClick={() => setSelectedTag('')}
+                className="text-sm text-blue-600 hover:text-blue-700"
+              >
+                クリア
+              </button>
+            )}
+          </div>
+          
+          {/* ソート */}
+          <div className="flex items-center space-x-3">
+            <label className="text-sm font-medium text-gray-700">ソート:</label>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="created_at">新しい順</option>
+              <option value="title">タイトル順</option>
+              <option value="year">発行年順</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      
+      {/* 論文リスト */}
+      {filteredPapers.length === 0 ? (
+        <div className="bg-white rounded-lg shadow-sm p-12 text-center">
+          <div className="text-4xl mb-4">📭</div>
+          <p className="text-gray-500 mb-4">
+            {selectedTag ? 'このタグの論文が見つかりません' : '論文が登録されていません'}
+          </p>
+          <Link
+            to="/papers/new"
+            className="inline-block px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
+          >
+            論文を登録
           </Link>
         </div>
-
-        {/* フィルタ・ソート */}
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* ソート */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                並び順
-              </label>
-              <Dropdown
-                value={sortBy}
-                onChange={handleSortChange}
-                options={[
-                  { value: 'newest', label: '新しい順' },
-                  { value: 'oldest', label: '古い順' },
-                  { value: 'title', label: 'タイトル順' },
-                  { value: 'viewed', label: '最近参照した順' }
-                ]}
-              />
-            </div>
-
-            {/* タグフィルタ */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                タグで絞り込み
-              </label>
-              <Dropdown
-                value={filterTag}
-                onChange={handleTagFilter}
-                placeholder="すべて"
-                options={tags.map(tag => ({
-                  value: tag.tag_name,
-                  label: `${tag.tag_name} (${tag.paper_count})`
-                }))}
-              />
-            </div>
-
-            {/* その他フィルタ */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                その他
-              </label>
-              <button
-                onClick={handleUnorganizedFilter}
-                className={`w-full px-4 py-2 rounded-lg border font-medium transition-colors ${
-                  filterUnorganized
-                    ? 'bg-blue-100 border-blue-300 text-blue-800'
-                    : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                }`}
-              >
-                📝 未整理のみ
-              </button>
-            </div>
-          </div>
-
-          {/* アクティブフィルタ表示 */}
-          {(filterTag || filterUnorganized) && (
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">フィルタ中:</span>
-                {filterTag && (
-                  <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                    #{filterTag}
-                  </span>
-                )}
-                {filterUnorganized && (
-                  <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
-                    未整理
-                  </span>
-                )}
-                <button
-                  onClick={clearFilters}
-                  className="ml-auto text-sm text-gray-600 hover:text-gray-900"
-                >
-                  クリア
-                </button>
+      ) : (
+        <div className="space-y-4">
+          {filteredPapers.map(paper => (
+            <div
+              key={paper.id}
+              className="bg-white rounded-lg shadow-sm p-6 hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  {/* タイトル */}
+                  <Link
+                    to={`/papers/${paper.id}`}
+                    className="text-xl font-semibold text-gray-800 hover:text-blue-600 transition-colors"
+                  >
+                    📄 {paper.title}
+                  </Link>
+                  
+                  {/* 著者・年 */}
+                  <p className="text-gray-600 mt-2">
+                    {paper.authors}
+                    {paper.year && <span className="ml-2">({paper.year})</span>}
+                  </p>
+                  
+                  {/* タグ */}
+                  {paper.tags && paper.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3">
+                      {paper.tags.map((tag, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => setSelectedTag(tag)}
+                          className="inline-block px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                        >
+                          #{tag}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                
+                {/* アクションボタン */}
+                <div className="flex flex-col space-y-2 ml-4">
+                  <button
+                    onClick={() => handleOpenPDF(paper.pdf_path)}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm rounded transition-colors"
+                  >
+                    PDF
+                  </button>
+                  <Link
+                    to={`/papers/${paper.id}`}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded text-center transition-colors"
+                  >
+                    詳細
+                  </Link>
+                </div>
               </div>
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* 論文数 */}
-      <div className="mb-4 text-sm text-gray-600">
-        {papers.length}件の論文
-      </div>
-
-      {/* 論文リスト */}
-      {papers.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4">
-          {papers.map(paper => (
-            <PaperCard key={paper.id} paper={paper} />
           ))}
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gray-100 rounded-full mb-4">
-            <span className="text-3xl">📄</span>
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            論文がありません
-          </h3>
-          <p className="text-gray-600 mb-6">
-            {filterTag || filterUnorganized
-              ? '条件に一致する論文が見つかりませんでした'
-              : 'まだ論文が登録されていません'}
-          </p>
-          {!filterTag && !filterUnorganized && (
-            <Link to="/upload">
-              <Button>論文を追加</Button>
-            </Link>
-          )}
         </div>
       )}
     </div>

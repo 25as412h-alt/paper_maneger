@@ -1,300 +1,196 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Loading, Button } from '../components/common/Button';
-import MemoList from '../components/memo/MemoList';
-import MemoEditor from '../components/memo/MemoEditor';
-import PDFViewer from '../components/paper/PDFViewer';
-import TXTViewer from '../components/paper/TXTViewer';
-import ProcessingStatus from '../components/paper/ProcessingStatus';
+import toast from 'react-hot-toast';
+import MemoList from '../components/MemoList';
 
 function PaperDetail() {
+  const [paper, setPaper] = useState(null);
+  const [memos, setMemos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  
   const { id } = useParams();
   const navigate = useNavigate();
   
-  const [paper, setPaper] = useState(null);
-  const [memos, setMemos] = useState([]);
-  const [chapters, setChapters] = useState([]);
-  const [figures, setFigures] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('pdf');
-  const [showMemoEditor, setShowMemoEditor] = useState(false);
-
   useEffect(() => {
-    loadPaperData();
-    updateViewedAt();
+    loadPaperDetail();
   }, [id]);
-
-  const loadPaperData = async () => {
+  
+  const loadPaperDetail = async () => {
     try {
-      setLoading(true);
-
       // 論文情報取得
-      const paperData = await window.electronAPI.papers.getById(parseInt(id));
-      if (!paperData) {
-        navigate('/papers');
-        return;
-      }
+      const paperData = await window.api.papers.findById(parseInt(id));
       setPaper(paperData);
-
+      
       // メモ取得
-      const memoData = await window.electronAPI.memos.getByPaper(parseInt(id));
-      setMemos(memoData);
-
-      // 章取得
-      const chapterData = await window.electronAPI.chapters.getByPaper(parseInt(id));
-      setChapters(chapterData);
-
-      // 図表取得
-      const figureData = await window.electronAPI.figures.getByPaper(parseInt(id));
-      setFigures(figureData);
-
+      const memosData = await window.api.memos.findByPaperId(parseInt(id));
+      setMemos(memosData);
+      
+      setLoading(false);
     } catch (error) {
-      console.error('Failed to load paper data:', error);
-    } finally {
+      console.error('論文詳細読み込みエラー:', error);
+      toast.error('論文の読み込みに失敗しました');
       setLoading(false);
     }
   };
-
-  const updateViewedAt = async () => {
-    try {
-      await window.electronAPI.papers.updateViewedAt(parseInt(id));
-    } catch (error) {
-      console.error('Failed to update viewed_at:', error);
+  
+  const handleOpenPDF = async () => {
+    if (paper?.pdf_path) {
+      try {
+        await window.api.openPDF(paper.pdf_path);
+      } catch (error) {
+        toast.error('PDFを開けませんでした');
+      }
     }
   };
-
+  
+  const handleDelete = async () => {
+    try {
+      await window.api.papers.delete(parseInt(id));
+      toast.success('論文を削除しました');
+      navigate('/papers');
+    } catch (error) {
+      console.error('論文削除エラー:', error);
+      toast.error('論文の削除に失敗しました');
+    }
+  };
+  
   const handleMemoCreated = () => {
-    setShowMemoEditor(false);
-    loadPaperData();
+    loadPaperDetail();
   };
-
-  const handleMemoDeleted = () => {
-    loadPaperData();
-  };
-
+  
   if (loading) {
-    return <Loading />;
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-gray-500">読み込み中...</div>
+      </div>
+    );
   }
-
+  
   if (!paper) {
-    return null;
-  }
-
-  return (
-    <div className="max-w-7xl mx-auto">
-      {/* ヘッダー */}
-      <div className="mb-6">
-        <Link to="/papers" className="text-blue-600 hover:text-blue-700 mb-4 inline-block">
-          ← 論文一覧に戻る
+    return (
+      <div className="max-w-4xl mx-auto text-center py-12">
+        <div className="text-4xl mb-4">❌</div>
+        <p className="text-gray-600 mb-4">論文が見つかりません</p>
+        <Link to="/papers" className="text-blue-600 hover:text-blue-700">
+          論文一覧に戻る
         </Link>
-        
-        {/* 処理状態表示 */}
-        <div className="mb-4">
-          <ProcessingStatus paperId={parseInt(id)} />
-        </div>
-        
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-          <div className="flex items-start justify-between mb-4">
-            <h1 className="text-2xl font-bold text-gray-900 flex-1">
-              {paper.title}
+      </div>
+    );
+  }
+  
+  return (
+    <div className="max-w-6xl mx-auto">
+      {/* ヘッダー */}
+      <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold text-gray-800 mb-3">
+              📄 {paper.title}
             </h1>
-            <Link to={`/papers/${id}/edit`}>
-              <Button variant="secondary" size="sm">
-                ✏️ 編集
-              </Button>
+            
+            <p className="text-gray-600 text-lg mb-3">
+              {paper.authors}
+              {paper.year && <span className="ml-2">({paper.year})</span>}
+            </p>
+            
+            {/* タグ */}
+            {paper.tags && paper.tags.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-4">
+                {paper.tags.map((tag, idx) => (
+                  <Link
+                    key={idx}
+                    to={`/papers?tag=${encodeURIComponent(tag)}`}
+                    className="inline-block px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors"
+                  >
+                    #{tag}
+                  </Link>
+                ))}
+              </div>
+            )}
+            
+            {/* 日時 */}
+            <div className="text-sm text-gray-500">
+              登録日: {new Date(paper.created_at).toLocaleString('ja-JP')}
+              {paper.last_viewed_at && (
+                <span className="ml-4">
+                  最終閲覧: {new Date(paper.last_viewed_at).toLocaleString('ja-JP')}
+                </span>
+              )}
+            </div>
+          </div>
+          
+          {/* アクションボタン */}
+          <div className="flex flex-col space-y-2 ml-4">
+            <button
+              onClick={handleOpenPDF}
+              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors"
+            >
+              📄 PDFを開く
+            </button>
+            <Link
+              to={`/papers/${id}/edit`}
+              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-center transition-colors"
+            >
+              ✏️ 編集
             </Link>
-          </div>
-
-          <div className="space-y-2 text-sm text-gray-600">
-            <div>
-              <span className="font-medium">著者:</span> {paper.authors || '不明'}
-            </div>
-            {paper.year && (
-              <div>
-                <span className="font-medium">年:</span> {paper.year}
-              </div>
-            )}
-            {paper.doi && (
-              <div>
-                <span className="font-medium">DOI:</span> {paper.doi}
-              </div>
-            )}
-            <div>
-              <span className="font-medium">メモ数:</span> {paper.memo_count}件
-            </div>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors"
+            >
+              🗑️ 削除
+            </button>
           </div>
         </div>
       </div>
-
-      {/* メインコンテンツ */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 左メイン（2/3） */}
-        <div className="lg:col-span-2">
-          {/* タブ */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200">
-            <div className="border-b border-gray-200">
-              <nav className="flex">
-                <TabButton
-                  active={activeTab === 'pdf'}
-                  onClick={() => setActiveTab('pdf')}
-                >
-                  {paper.file_type === 'pdf' ? '📄 PDF' : '📝 テキスト'}
-                </TabButton>
-                <TabButton
-                  active={activeTab === 'chapters'}
-                  onClick={() => setActiveTab('chapters')}
-                >
-                  📚 章 ({chapters.length})
-                </TabButton>
-                <TabButton
-                  active={activeTab === 'figures'}
-                  onClick={() => setActiveTab('figures')}
-                >
-                  🖼 図表 ({figures.length})
-                </TabButton>
-              </nav>
-            </div>
-
-            <div className="p-6">
-              {/* PDFタブ */}
-              {activeTab === 'pdf' && (
-                <div className="h-[800px]">
-                  {paper.file_type === 'pdf' ? (
-                    <PDFViewer paperId={parseInt(id)} />
-                  ) : (
-                    <TXTViewer paperId={parseInt(id)} />
-                  )}
-                </div>
-              )}
-
-              {/* 章タブ */}
-              {activeTab === 'chapters' && (
-                <div>
-                  {chapters.length > 0 ? (
-                    <div className="space-y-6">
-                      {chapters.map(chapter => (
-                        <div key={chapter.id} className="border-b border-gray-200 pb-6 last:border-0">
-                          <div className="flex items-start justify-between mb-2">
-                            <h3 className="text-lg font-semibold text-gray-900">
-                              {chapter.title}
-                            </h3>
-                            {chapter.is_auto_extracted && (
-                              <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">
-                                ⚠ 自動抽出
-                              </span>
-                            )}
-                          </div>
-                          {chapter.page_start && (
-                            <p className="text-sm text-gray-600 mb-3">
-                              p.{chapter.page_start}
-                              {chapter.page_end && ` - ${chapter.page_end}`}
-                            </p>
-                          )}
-                          <p className="text-gray-700 whitespace-pre-wrap">
-                            {chapter.content?.substring(0, 500)}
-                            {chapter.content?.length > 500 && '...'}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12 text-gray-500">
-                      <p>章情報がありません</p>
-                      <p className="text-sm mt-2">PDF解析後に表示されます</p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 図表タブ */}
-              {activeTab === 'figures' && (
-                <div>
-                  {figures.length > 0 ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {figures.map(figure => (
-                        <div key={figure.id} className="border border-gray-200 rounded-lg p-4">
-                          <div className="flex items-start justify-between mb-2">
-                            <h4 className="font-semibold text-gray-900">
-                              {figure.figure_number}
-                            </h4>
-                            {figure.page_number && (
-                              <span className="text-sm text-gray-600">
-                                p.{figure.page_number}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-700">
-                            {figure.caption}
-                          </p>
-                          {figure.is_auto_extracted && (
-                            <span className="inline-block mt-2 px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded">
-                              ⚠ 自動抽出
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12 text-gray-500">
-                      <p>図表情報がありません</p>
-                      <p className="text-sm mt-2">PDF解析後に表示されます</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* 右サイドバー（1/3） */}
-        <div className="space-y-6">
-          {/* メモセクション */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">
-                📝 メモ ({memos.length})
-              </h2>
-              <Button
-                size="sm"
-                onClick={() => setShowMemoEditor(true)}
-              >
-                + 追加
-              </Button>
-            </div>
-
-            <MemoList
-              memos={memos}
-              onMemoDeleted={handleMemoDeleted}
-            />
-          </div>
+      
+      {/* 本文プレビュー */}
+      <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+        <h2 className="text-xl font-semibold text-gray-800 mb-4">📝 本文</h2>
+        <div className="bg-gray-50 rounded p-4 max-h-96 overflow-y-auto">
+          <pre className="whitespace-pre-wrap font-sans text-sm text-gray-700">
+            {paper.content}
+          </pre>
         </div>
       </div>
-
-      {/* メモ作成モーダル */}
-      {showMemoEditor && (
-        <MemoEditor
-          paperId={parseInt(id)}
-          onClose={() => setShowMemoEditor(false)}
-          onSave={handleMemoCreated}
+      
+      {/* メモセクション */}
+      <div className="bg-white rounded-lg shadow-sm p-6">
+        <MemoList 
+          paperId={parseInt(id)} 
+          memos={memos}
+          onMemoCreated={handleMemoCreated}
         />
+      </div>
+      
+      {/* 削除確認モーダル */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">
+              論文を削除しますか?
+            </h3>
+            <p className="text-gray-600 mb-6">
+              この操作は取り消せません。論文とすべてのメモが削除されます。
+            </p>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleDelete}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors"
+              >
+                削除
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
-  );
-}
-
-// タブボタン
-function TabButton({ active, onClick, children }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-6 py-3 font-medium border-b-2 transition-colors ${
-        active
-          ? 'border-blue-600 text-blue-600'
-          : 'border-transparent text-gray-600 hover:text-gray-900'
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
