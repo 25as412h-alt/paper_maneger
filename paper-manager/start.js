@@ -1,58 +1,56 @@
-const { app, BrowserWindow, dialog } = require('electron');
-const fs = require('fs');
-const path = require('path');
+#!/usr/bin/env node
 
-// ====================================
-// 1. バッチファイル相当の事前チェック
-// ====================================
+const { spawn } = require('child_process');
+const path = require('path');
+const fs = require('fs');
 
 console.log('====================================');
-console.log('   Paper Manager 起動中...');
+console.log('  Paper Manager 起動中...');
 console.log('====================================\n');
 
-// 実行ディレクトリの取得 (cd /d %~dp0 相当)
-const baseDir = __dirname;
-
-// node_modules の存在確認
-const nodeModulesPath = path.join(baseDir, 'node_modules');
-
+// node_modulesの存在確認
+const nodeModulesPath = path.join(__dirname, 'node_modules');
 if (!fs.existsSync(nodeModulesPath)) {
-    // ターミナルへの警告
-    console.error('[警告] node_modules が見つかりません');
-    console.error('npm install を実行してください');
-
-    // ユーザーに GUI で通知 (オプション)
-    app.whenReady().then(() => {
-        dialog.showErrorBox(
-            '依存関係エラー',
-            'node_modules が見つかりません。npm install を実行してください。'
-        );
-        app.quit();
-    });
-} else {
-    // 通常の Electron 起動処理へ
-    console.log('[起動] Electron を起動しています...');
-    createWindow();
+  console.error('[エラー] node_modules が見つかりません');
+  console.error('以下のコマンドを実行してください:');
+  console.error('  npm install\n');
+  process.exit(1);
 }
 
-// ====================================
-// 2. 通常の Electron 処理
-// ====================================
-
-function createWindow() {
-    // ウィンドウ作成のコード（既存のもの）
-    const win = new BrowserWindow({
-        width: 800,
-        height: 600,
-        webPreferences: {
-            nodeIntegration: true
-        }
-    });
-
-    win.loadFile('index.html');
+// dataディレクトリの確認
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) {
+  console.log('[初期化] dataディレクトリを作成中...');
+  fs.mkdirSync(dataDir);
+  fs.mkdirSync(path.join(dataDir, 'pdfs'));
+  fs.mkdirSync(path.join(dataDir, 'backups'));
+  console.log('✅ ディレクトリを作成しました\n');
 }
 
-// node_modules がある場合のみ実行されるイベント
-app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') app.quit();
+console.log('[起動] Electron を起動しています...\n');
+
+// Electronを起動
+const electron = spawn('npm', ['start'], {
+  stdio: 'inherit',
+  shell: true,
+  cwd: __dirname
+});
+
+electron.on('error', (error) => {
+  console.error('[エラー]', error.message);
+  process.exit(1);
+});
+
+electron.on('close', (code) => {
+  if (code !== 0) {
+    console.error(`\n[エラー] プロセスが終了しました (コード: ${code})`);
+  }
+  process.exit(code);
+});
+
+// Ctrl+Cでの終了処理
+process.on('SIGINT', () => {
+  console.log('\n\n[終了] アプリケーションを終了しています...');
+  electron.kill('SIGINT');
+  process.exit(0);
 });

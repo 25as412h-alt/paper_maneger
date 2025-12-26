@@ -5,6 +5,7 @@
     "main": "main.js",
     "scripts": {
       "start": "electron .",
+      "launch": "node start.js",
       "dev": "webpack serve --mode development",
       "build": "webpack --mode production && electron-builder",
       "setup": "node scripts/setup.js",
@@ -13,6 +14,9 @@
       "db:stats": "node scripts/db-utils.js stats",
       "db:reset": "node scripts/db-utils.js reset",
       "db:backups": "node scripts/db-utils.js backups"
+    },
+    "bin": {
+      "paper-manager": "./start.js"
     },
     "keywords": ["research", "papers", "pdf", "notes", "search"],
     "author": "",
