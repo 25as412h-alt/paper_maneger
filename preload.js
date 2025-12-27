@@ -1,7 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 // セキュアなAPIブリッジ
-contextBridge.exposeInMainWorld('api', {
+contextBridge.exposeInMainWorld('electronAPI', {
   // ファイル操作
   selectPDF: () => ipcRenderer.invoke('file:select-pdf'),
   openPDF: (path) => ipcRenderer.invoke('pdf:open', path),
