@@ -31,16 +31,64 @@ function createWindow() {
     icon: path.join(__dirname, 'public', 'icon.png')
   });
 
-  // 本番環境とdev環境で読み込み先を変更
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('http://localhost:8080');
-  } else {
-    mainWindow.loadFile('./public/index.html');
-  }
+  // 開発者ツールを開く（デバッグ用）
+  mainWindow.webContents.openDevTools();
 
-  // 開発ツール
-  if (process.env.NODE_ENV === 'development') {
-    mainWindow.webContents.openDevTools();
+  // ビルドされたファイルを読み込む
+  const indexPath = path.join(__dirname, 'build', 'index.html');
+  
+  if (fs.existsSync(indexPath)) {
+    mainWindow.loadFile(indexPath);
+    console.log('✅ アプリを読み込みました');
+  } else {
+    console.error('❌ build/index.html が見つかりません');
+    console.error('以下のコマンドを実行してください:');
+    console.error('  npm run build:app\n');
+    
+    // エラーページを表示
+    mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: #f5f5f5;
+          }
+          .container {
+            text-align: center;
+            padding: 40px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+          }
+          h1 { color: #e53e3e; }
+          pre {
+            background: #2d3748;
+            color: #48bb78;
+            padding: 20px;
+            border-radius: 5px;
+            text-align: left;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>⚠️ ビルドが必要です</h1>
+          <p>Reactアプリがビルドされていません。</p>
+          <p>ターミナルで以下のコマンドを実行してください:</p>
+          <pre>npm run build:app</pre>
+          <p>その後、アプリを再起動してください。</p>
+        </div>
+      </body>
+      </html>
+    `)}`)
   }
 }
 

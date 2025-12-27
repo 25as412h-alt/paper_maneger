@@ -7,7 +7,8 @@
       "start": "electron .",
       "launch": "node start.js",
       "dev": "webpack serve --mode development",
-      "build": "webpack --mode production && electron-builder",
+      "build:app": "webpack --mode production",
+      "build": "npm run build:app && electron-builder",
       "setup": "node scripts/setup.js",
       "init-db": "node database/init.js",
       "sample-data": "node scripts/sample-data.js",
@@ -22,7 +23,6 @@
     "author": "",
     "license": "MIT",
     "dependencies": {
-      "electron": "^28.0.0",
       "react": "^18.2.0",
       "react-dom": "^18.2.0",
       "react-router-dom": "^6.20.0",
@@ -43,6 +43,7 @@
       "postcss-loader": "^7.3.3",
       "css-loader": "^6.8.1",
       "style-loader": "^3.3.3",
+      "electron": "^28.0.0",
       "electron-builder": "^24.9.1"
     },
     "build": {

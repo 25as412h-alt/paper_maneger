@@ -29,28 +29,59 @@ if (!fs.existsSync(dataDir)) {
 
 console.log('[起動] Electron を起動しています...\n');
 
-// Electronを起動
-const electron = spawn('npm', ['start'], {
-  stdio: 'inherit',
-  shell: true,
-  cwd: __dirname
-});
+// ビルドファイルの確認
+const buildDir = path.join(__dirname, 'build');
+const buildIndex = path.join(buildDir, 'index.html');
 
-electron.on('error', (error) => {
-  console.error('[エラー]', error.message);
-  process.exit(1);
-});
+if (!fs.existsSync(buildIndex)) {
+  console.log('[警告] Reactアプリがビルドされていません');
+  console.log('[自動] ビルドを実行しています...\n');
+  
+  // 自動的にビルド実行
+  const build = spawn('npm', ['run', 'build:app'], {
+    stdio: 'inherit',
+    shell: true,
+    cwd: __dirname
+  });
+  
+  build.on('close', (code) => {
+    if (code === 0) {
+      console.log('\n✅ ビルドが完了しました');
+      console.log('[起動] Electronを起動します...\n');
+      startElectron();
+    } else {
+      console.error('\n❌ ビルドに失敗しました');
+      process.exit(1);
+    }
+  });
+} else {
+  startElectron();
+}
 
-electron.on('close', (code) => {
-  if (code !== 0) {
-    console.error(`\n[エラー] プロセスが終了しました (コード: ${code})`);
-  }
-  process.exit(code);
-});
+function startElectron() {
+  // Electronを起動
+  const electron = spawn('npm', ['start'], {
+    stdio: 'inherit',
+    shell: true,
+    cwd: __dirname
+  });
 
-// Ctrl+Cでの終了処理
-process.on('SIGINT', () => {
-  console.log('\n\n[終了] アプリケーションを終了しています...');
-  electron.kill('SIGINT');
-  process.exit(0);
-});
+  electron.on('error', (error) => {
+    console.error('[エラー]', error.message);
+    process.exit(1);
+  });
+
+  electron.on('close', (code) => {
+    if (code !== 0) {
+      console.error(`\n[エラー] プロセスが終了しました (コード: ${code})`);
+    }
+    process.exit(code);
+  });
+
+  // Ctrl+Cでの終了処理
+  process.on('SIGINT', () => {
+    console.log('\n\n[終了] アプリケーションを終了しています...');
+    electron.kill('SIGINT');
+    process.exit(0);
+  });
+}
