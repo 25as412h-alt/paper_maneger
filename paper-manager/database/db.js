@@ -3,7 +3,20 @@ const fs = require('fs');
 const path = require('path');
 
 const dbPath = path.join(__dirname, '../data/papers.db');
-const db = new sqlite3.Database(dbPath);
+// データベース接続
+const db = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+        console.error('データベース接続エラー:', err.message);
+    } else {
+        console.log('SQLite データベースに接続しました。');
+    }
+});
+
+// もしフォルダがなければ作成する（エラー防止）
+const dataDir = path.dirname(dbPath);
+if (!fs.existsSync(dataDir)){
+    fs.mkdirSync(dataDir, { recursive: true });
+}
 
 // データベース初期化
 function initDB() {
