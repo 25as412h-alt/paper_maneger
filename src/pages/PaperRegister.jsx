@@ -18,6 +18,13 @@ function PaperRegister() {
   const navigate = useNavigate();
   const { id } = useParams();
   
+  // デバッグログ
+  useEffect(() => {
+    console.log('[PaperRegister] コンポーネントマウント');
+    console.log('[PaperRegister] window.api:', window.api);
+    console.log('[PaperRegister] window.api.selectPDF:', window.api?.selectPDF);
+  }, []);
+  
   useEffect(() => {
     if (id) {
       setIsEditMode(true);
@@ -27,7 +34,10 @@ function PaperRegister() {
   
   const loadPaper = async (paperId) => {
     try {
+      console.log('[PaperRegister] 論文読み込み開始:', paperId);
       const paper = await window.api.papers.findById(parseInt(paperId));
+      console.log('[PaperRegister] 論文データ:', paper);
+      
       if (paper) {
         setFormData({
           title: paper.title || '',
@@ -40,27 +50,46 @@ function PaperRegister() {
         setPdfFile({ originalName: paper.pdf_path.split('_').slice(1).join('_') });
       }
     } catch (error) {
-      console.error('論文読み込みエラー:', error);
+      console.error('[PaperRegister] 論文読み込みエラー:', error);
       toast.error('論文の読み込みに失敗しました');
     }
   };
   
   const handleSelectPDF = async () => {
-    const result = await window.api.selectPDF();
-    if (result) {
-      setPdfFile(result);
-      setFormData(prev => ({ ...prev, pdf_path: result.path }));
-      toast.success('PDFファイルを選択しました');
+    console.log('[PaperRegister] PDFファイル選択開始');
+    console.log('[PaperRegister] window.api.selectPDF:', window.api?.selectPDF);
+    
+    try {
+      if (!window.api || !window.api.selectPDF) {
+        console.error('[PaperRegister] window.api.selectPDF が未定義です');
+        toast.error('APIが利用できません。アプリを再起動してください。');
+        return;
+      }
+      
+      const result = await window.api.selectPDF();
+      console.log('[PaperRegister] PDF選択結果:', result);
+      
+      if (result) {
+        setPdfFile(result);
+        setFormData(prev => ({ ...prev, pdf_path: result.path }));
+        toast.success('PDFファイルを選択しました');
+      }
+    } catch (error) {
+      console.error('[PaperRegister] PDF選択エラー:', error);
+      toast.error('PDFファイルの選択に失敗しました: ' + error.message);
     }
   };
   
   const handleChange = (e) => {
     const { name, value } = e.target;
+    console.log('[PaperRegister] フォーム変更:', name, value);
     setFormData(prev => ({ ...prev, [name]: value }));
   };
   
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log('[PaperRegister] フォーム送信開始');
+    console.log('[PaperRegister] フォームデータ:', formData);
     
     // バリデーション
     if (!formData.title.trim()) {
@@ -96,20 +125,26 @@ function PaperRegister() {
         tags: tags
       };
       
+      console.log('[PaperRegister] 送信データ:', data);
+      
       if (isEditMode) {
         // 更新
+        console.log('[PaperRegister] 論文更新開始:', id);
         await window.api.papers.update(parseInt(id), data);
         toast.success('論文を更新しました');
         navigate(`/papers/${id}`);
       } else {
         // 新規登録
+        console.log('[PaperRegister] 論文登録開始');
         const result = await window.api.papers.create(data);
+        console.log('[PaperRegister] 論文登録結果:', result);
         toast.success('論文を登録しました');
         navigate(`/papers/${result.id}`);
       }
     } catch (error) {
-      console.error('論文保存エラー:', error);
-      toast.error('論文の保存に失敗しました');
+      console.error('[PaperRegister] 論文保存エラー:', error);
+      console.error('[PaperRegister] エラー詳細:', error.stack);
+      toast.error('論文の保存に失敗しました: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -122,6 +157,26 @@ function PaperRegister() {
         <h1 className="text-3xl font-bold text-gray-800">
           {isEditMode ? '📝 論文編集' : '📄 論文登録'}
         </h1>
+        
+        {/* デバッグ情報 */}
+        <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+          <div className="font-semibold mb-2">🔧 デバッグ情報:</div>
+          <div>window.api 存在: {window.api ? '✅' : '❌'}</div>
+          <div>window.api.selectPDF 存在: {window.api?.selectPDF ? '✅' : '❌'}</div>
+          <div>window.api.papers.create 存在: {window.api?.papers?.create ? '✅' : '❌'}</div>
+          
+          {/* テストボタン */}
+          <button
+            type="button"
+            onClick={() => {
+              console.log('テストボタンがクリックされました');
+              alert('ボタンクリックは動作しています！\nConsoleを確認してください。');
+            }}
+            className="mt-2 px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+          >
+            🧪 クリックテスト
+          </button>
+        </div>
       </div>
       
       {/* フォーム */}
