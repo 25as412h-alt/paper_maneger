@@ -6,25 +6,40 @@ function Dashboard() {
   const [recentPapers, setRecentPapers] = useState([]);
   const [tags, setTags] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [apiStatus, setApiStatus] = useState('checking');
   const navigate = useNavigate();
   
   useEffect(() => {
+    // APIチェック
+    console.log('[Dashboard] window.api:', window.api);
+    if (!window.api || !window.api.papers) {
+      setApiStatus('error');
+      console.error('[Dashboard] window.api が利用できません');
+      return;
+    }
+    setApiStatus('ok');
+    
     loadDashboardData();
   }, []);
   
   const loadDashboardData = async () => {
     try {
+      console.log('[Dashboard] データ読み込み開始');
+      
       // 最近の論文取得
       const papers = await window.api.papers.findRecent(5);
+      console.log('[Dashboard] 論文データ:', papers);
       setRecentPapers(papers);
       
       // タグ一覧取得
       const allTags = await window.api.tags.findAll();
+      console.log('[Dashboard] タグデータ:', allTags);
       setTags(allTags);
       
       setLoading(false);
+      console.log('[Dashboard] データ読み込み完了');
     } catch (error) {
-      console.error('ダッシュボードデータ読み込みエラー:', error);
+      console.error('[Dashboard] データ読み込みエラー:', error);
       setLoading(false);
     }
   };
@@ -51,8 +66,15 @@ function Dashboard() {
   
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-500">読み込み中...</div>
+      <div className="flex flex-col items-center justify-center h-64">
+        <div className="text-gray-500 mb-4">読み込み中...</div>
+        {apiStatus === 'error' && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+            <p className="font-bold">⚠️ API接続エラー</p>
+            <p className="text-sm">window.api が利用できません。</p>
+            <p className="text-sm">開発者ツールのConsoleタブを確認してください。</p>
+          </div>
+        )}
       </div>
     );
   }

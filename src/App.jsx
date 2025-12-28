@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // ページコンポーネント
 import Dashboard from './pages/Dashboard';
@@ -10,51 +11,63 @@ import PaperRegister from './pages/PaperRegister';
 import SearchResult from './pages/SearchResult';
 
 function App() {
+  // デバッグ: window.apiの存在確認
+  React.useEffect(() => {
+    console.log('[App] window.api:', window.api);
+    console.log('[App] window.api.papers:', window.api?.papers);
+    
+    if (!window.api) {
+      console.error('[App] ⚠️ window.api が未定義です！preload.jsが正しく読み込まれていない可能性があります。');
+    }
+  }, []);
+
   return (
-    <Router>
-      <div className="min-h-screen bg-gray-50">
-        {/* ナビゲーションバー */}
-        <Navigation />
-        
-        {/* メインコンテンツ */}
-        <main className="container mx-auto px-4 py-6">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/papers" element={<PaperList />} />
-            <Route path="/papers/new" element={<PaperRegister />} />
-            <Route path="/papers/:id" element={<PaperDetail />} />
-            <Route path="/papers/:id/edit" element={<PaperRegister />} />
-            <Route path="/search" element={<SearchResult />} />
-          </Routes>
-        </main>
-        
-        {/* トースト通知 */}
-        <Toaster 
-          position="top-right"
-          toastOptions={{
-            duration: 3000,
-            style: {
-              background: '#363636',
-              color: '#fff',
-            },
-            success: {
-              duration: 2000,
-              iconTheme: {
-                primary: '#10b981',
-                secondary: '#fff',
+    <ErrorBoundary>
+      <Router>
+        <div className="min-h-screen bg-gray-50">
+          {/* ナビゲーションバー */}
+          <Navigation />
+          
+          {/* メインコンテンツ */}
+          <main className="container mx-auto px-4 py-6">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/papers" element={<PaperList />} />
+              <Route path="/papers/new" element={<PaperRegister />} />
+              <Route path="/papers/:id" element={<PaperDetail />} />
+              <Route path="/papers/:id/edit" element={<PaperRegister />} />
+              <Route path="/search" element={<SearchResult />} />
+            </Routes>
+          </main>
+          
+          {/* トースト通知 */}
+          <Toaster 
+            position="top-right"
+            toastOptions={{
+              duration: 3000,
+              style: {
+                background: '#363636',
+                color: '#fff',
               },
-            },
-            error: {
-              duration: 4000,
-              iconTheme: {
-                primary: '#ef4444',
-                secondary: '#fff',
+              success: {
+                duration: 2000,
+                iconTheme: {
+                  primary: '#10b981',
+                  secondary: '#fff',
+                },
               },
-            },
-          }}
-        />
-      </div>
-    </Router>
+              error: {
+                duration: 4000,
+                iconTheme: {
+                  primary: '#ef4444',
+                  secondary: '#fff',
+                },
+              },
+            }}
+          />
+        </div>
+      </Router>
+    </ErrorBoundary>
   );
 }
 
