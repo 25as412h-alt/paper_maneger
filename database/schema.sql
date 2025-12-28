@@ -1,4 +1,4 @@
--- Paper Manager Database Schema
+-- database/schema.sql - データベーススキーマ定義
 
 -- 論文テーブル
 CREATE TABLE IF NOT EXISTS papers (
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS tags (
   UNIQUE(paper_id, tag_name)
 );
 
--- 全文検索インデックス（FTS5）- 論文用
+-- 論文用全文検索インデックス（FTS5）
 CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts USING fts5(
   paper_id UNINDEXED,
   title,
@@ -40,7 +40,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts USING fts5(
   tokenize='porter unicode61'
 );
 
--- 全文検索インデックス（FTS5）- メモ用
+-- メモ用全文検索インデックス（FTS5）
 CREATE VIRTUAL TABLE IF NOT EXISTS memos_fts USING fts5(
   memo_id UNINDEXED,
   content,
@@ -57,8 +57,9 @@ CREATE TABLE IF NOT EXISTS search_history (
 );
 
 -- インデックス作成
-CREATE INDEX IF NOT EXISTS idx_papers_year ON papers(year);
-CREATE INDEX IF NOT EXISTS idx_papers_created ON papers(created_at);
+CREATE INDEX IF NOT EXISTS idx_papers_created_at ON papers(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_papers_last_viewed_at ON papers(last_viewed_at DESC);
 CREATE INDEX IF NOT EXISTS idx_memos_paper_id ON memos(paper_id);
+CREATE INDEX IF NOT EXISTS idx_memos_created_at ON memos(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_tags_paper_id ON tags(paper_id);
-CREATE INDEX IF NOT EXISTS idx_tags_name ON tags(tag_name);
+CREATE INDEX IF NOT EXISTS idx_tags_tag_name ON tags(tag_name);

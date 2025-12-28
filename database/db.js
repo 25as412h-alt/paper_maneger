@@ -1,365 +1,443 @@
-const Database = require('better-sqlite3');
+// database/db.js - SQLiteデータベース管理クラス
+const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const path = require('path');
 
-const dbPath = path.join(__dirname, '../data/papers.db');
-const db = new Database(dbPath);
+class Database {
+  constructor(dbPath) {
+    console.log(`[DB] データベース接続: ${dbPath}`);
+    
+    this.db = new sqlite3.Database(dbPath, (err) => {
+      if (err) {
+        console.error('[DB] 接続エラー:', err);
+        throw err;
+      }
+      console.log('[DB] 接続成功');
+    });
 
-// WALモードを有効化（パフォーマンス向上）
-db.pragma('journal_mode = WAL');
-
-// データベース初期化
-function initDB() {
-  const schemaPath = path.join(__dirname, 'schema.sql');
-  const schema = fs.readFileSync(schemaPath, 'utf8');
-  
-  try {
-    db.exec(schema);
-    console.log('DB初期化完了');
-  } catch (err) {
-    console.error('DB初期化エラー:', err);
+    this.initialize();
   }
-}
 
-// ========== 論文操作 ==========
+  // データベース初期化
+  initialize() {
+    console.log('[DB] スキーマ初期化開始');
+    
+    const schemaPath = path.join(__dirname, 'schema.sql');
+    const schema = fs.readFileSync(schemaPath, 'utf8');
+    
+    this.db.exec(schema, (err) => {
+      if (err) {
+        console.error('[DB] スキーマ初期化エラー:', err);
+        throw err;
+      }
+      console.log('[DB] スキーマ初期化完了');
+    });
+  }
 
-const papers = {
-  // 新規登録
-  create: (data) => {
-    const { title, authors, year, pdf_path, content, tags } = data;
-    
-    const insertPaper = db.prepare(`
-      INSERT INTO papers (title, authors, year, pdf_path, content) 
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    
-    const result = insertPaper.run(title, authors, year, pdf_path, content);
-    const paperId = result.lastInsertRowid;
-    
-    // FTS5に登録
-    const insertFts = db.prepare(`
-      INSERT INTO papers_fts (paper_id, title, authors, content) 
-      VALUES (?, ?, ?, ?)
-    `);
-    insertFts.run(paperId, title, authors, content);
-    
-    // タグ登録
-    if (tags && tags.length > 0) {
-      const insertTag = db.prepare('INSERT INTO tags (paper_id, tag_name) VALUES (?, ?)');
-      const insertMany = db.transaction((paperId, tags) => {
-        for (const tag of tags) {
-          insertTag.run(paperId, tag.trim());
+  // プロミス化されたクエリ実行
+  run(sql, params = []) {
+    return new Promise((resolve, reject) => {
+      this.db.run(sql, params, function(err) {
+        if (err) {
+          console.error('[DB] 実行エラー:', sql, err);
+          reject(err);
+        } else {
+          resolve(this);
         }
       });
-      insertMany(paperId, tags);
-    }
-    
-    return { id: paperId };
-  },
+    });
+  }
 
-  // 全件取得（タグ含む）
-  findAll: () => {
+  get(sql, params = []) {
+    return new Promise((resolve, reject) => {
+      this.db.get(sql, params, (err, row) => {
+        if (err) {
+          console.error('[DB] 取得エラー:', sql, err);
+          reject(err);
+        } else {
+          resolve(row);
+        }
+      });
+    });
+  }
+
+  all(sql, params = []) {
+    return new Promise((resolve, reject) => {
+      this.db.all(sql, params, (err, rows) => {
+        if (err) {
+          console.error('[DB] 一覧取得エラー:', sql, err);
+          reject(err);
+        } else {
+          resolve(rows);
+        }
+      });
+    });
+  }
+
+  // 論文追加
+  async addPaper(paper) {
+    console.log(`[DB] 論文追加: ${paper.title}`);
+    
     const sql = `
-      SELECT p.*, 
-             GROUP_CONCAT(t.tag_name) as tags
-      FROM papers p
-      LEFT JOIN tags t ON p.id = t.paper_id
-      GROUP BY p.id
-      ORDER BY p.created_at DESC
+      INSERT INTO papers (title, authors, year, pdf_path, content)
+      VALUES (?, ?, ?, ?, ?)
     `;
     
-    const rows = db.prepare(sql).all();
+    const result = await this.run(sql, [
+      paper.title,
+      paper.authors,
+      paper.year,
+      paper.pdf_path,
+      paper.content
+    ]);
     
-    return rows.map(row => ({
-      ...row,
-      tags: row.tags ? row.tags.split(',') : []
-    }));
-  },
+    const paperId = result.lastID;
+    
+    // FTS5インデックスに追加
+    await this.run(`
+      INSERT INTO papers_fts (paper_id, title, authors, content)
+      VALUES (?, ?, ?, ?)
+    `, [paperId, paper.title, paper.authors, paper.content]);
+    
+    console.log(`[DB] 論文追加完了: ID=${paperId}`);
+    return paperId;
+  }
 
-  // ID検索
-  findById: (id) => {
-    const sql = `
-      SELECT p.*, 
-             GROUP_CONCAT(t.tag_name) as tags
+  // タグ追加
+  async addTags(paperId, tags) {
+    console.log(`[DB] タグ追加: Paper ID=${paperId}, タグ=${tags.join(',')}`);
+    
+    const sql = `INSERT OR IGNORE INTO tags (paper_id, tag_name) VALUES (?, ?)`;
+    
+    for (const tag of tags) {
+      const trimmedTag = tag.trim();
+      if (trimmedTag) {
+        await this.run(sql, [paperId, trimmedTag]);
+      }
+    }
+    
+    console.log('[DB] タグ追加完了');
+  }
+
+  // 論文一覧取得
+  async getPapers(filters = {}) {
+    console.log('[DB] 論文一覧取得:', filters);
+    
+    let sql = `
+      SELECT DISTINCT p.*, 
+        GROUP_CONCAT(t.tag_name, ', ') as tags
+      FROM papers p
+      LEFT JOIN tags t ON p.id = t.paper_id
+    `;
+    
+    const conditions = [];
+    const params = [];
+    
+    // タグでフィルタ
+    if (filters.tag) {
+      conditions.push(`p.id IN (SELECT paper_id FROM tags WHERE tag_name = ?)`);
+      params.push(filters.tag);
+    }
+    
+    if (conditions.length > 0) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+    
+    sql += ' GROUP BY p.id ORDER BY p.created_at DESC';
+    
+    const papers = await this.all(sql, params);
+    console.log(`[DB] 論文取得完了: ${papers.length}件`);
+    
+    return papers;
+  }
+
+  // 論文詳細取得
+  async getPaperById(paperId) {
+    console.log(`[DB] 論文詳細取得: ID=${paperId}`);
+    
+    const paper = await this.get(`
+      SELECT p.*, GROUP_CONCAT(t.tag_name, ', ') as tags
       FROM papers p
       LEFT JOIN tags t ON p.id = t.paper_id
       WHERE p.id = ?
       GROUP BY p.id
-    `;
+    `, [paperId]);
     
-    const row = db.prepare(sql).get(id);
-    
-    if (row) {
-      return {
-        ...row,
-        tags: row.tags ? row.tags.split(',') : []
-      };
-    }
-    return null;
-  },
-
-  // 更新
-  update: (id, data) => {
-    const { title, authors, year, content, tags } = data;
-    
-    const updatePaper = db.prepare(`
-      UPDATE papers 
-      SET title=?, authors=?, year=?, content=?, 
-          last_viewed_at=CURRENT_TIMESTAMP 
-      WHERE id=?
-    `);
-    
-    const result = updatePaper.run(title, authors, year, content, id);
-    
-    // FTS5更新
-    const updateFts = db.prepare(`
-      UPDATE papers_fts 
-      SET title=?, authors=?, content=? 
-      WHERE paper_id=?
-    `);
-    updateFts.run(title, authors, content, id);
-    
-    // タグ更新（既存削除→再登録）
-    const deleteTags = db.prepare('DELETE FROM tags WHERE paper_id = ?');
-    deleteTags.run(id);
-    
-    if (tags && tags.length > 0) {
-      const insertTag = db.prepare('INSERT INTO tags (paper_id, tag_name) VALUES (?, ?)');
-      const insertMany = db.transaction((paperId, tags) => {
-        for (const tag of tags) {
-          insertTag.run(paperId, tag.trim());
-        }
-      });
-      insertMany(id, tags);
+    if (!paper) {
+      console.warn(`[DB] 論文が見つかりません: ID=${paperId}`);
+      return null;
     }
     
-    return { changes: result.changes };
-  },
-
-  // 削除
-  delete: (id) => {
-    const deletePaper = db.prepare('DELETE FROM papers WHERE id = ?');
-    const result = deletePaper.run(id);
+    // 最終閲覧日時を更新
+    await this.run(`
+      UPDATE papers SET last_viewed_at = CURRENT_TIMESTAMP WHERE id = ?
+    `, [paperId]);
     
-    const deleteFts = db.prepare('DELETE FROM papers_fts WHERE paper_id = ?');
-    deleteFts.run(id);
-    
-    return { changes: result.changes };
-  },
+    console.log('[DB] 論文詳細取得完了');
+    return paper;
+  }
 
-  // 最近追加された論文
-  findRecent: (limit = 5) => {
-    const sql = `
-      SELECT p.id, p.title, p.authors, p.year, p.created_at,
-             GROUP_CONCAT(t.tag_name) as tags
+  // 最近追加した論文取得
+  async getRecentPapers(limit = 5) {
+    console.log(`[DB] 最近の論文取得: limit=${limit}`);
+    
+    const papers = await this.all(`
+      SELECT p.*, GROUP_CONCAT(t.tag_name, ', ') as tags
       FROM papers p
       LEFT JOIN tags t ON p.id = t.paper_id
       GROUP BY p.id
       ORDER BY p.created_at DESC
       LIMIT ?
-    `;
+    `, [limit]);
     
-    const rows = db.prepare(sql).all(limit);
-    
-    return rows.map(row => ({
-      ...row,
-      tags: row.tags ? row.tags.split(',') : []
-    }));
+    console.log(`[DB] 最近の論文取得完了: ${papers.length}件`);
+    return papers;
   }
-};
 
-// ========== メモ操作 ==========
-
-const memos = {
-  // 作成
-  create: (paperId, content) => {
-    const insertMemo = db.prepare('INSERT INTO memos (paper_id, content) VALUES (?, ?)');
-    const result = insertMemo.run(paperId, content);
-    const memoId = result.lastInsertRowid;
+  // 論文更新
+  async updatePaper(paperId, updates) {
+    console.log(`[DB] 論文更新: ID=${paperId}`);
     
-    // FTS5に登録
-    const insertFts = db.prepare('INSERT INTO memos_fts (memo_id, content) VALUES (?, ?)');
-    insertFts.run(memoId, content);
+    const fields = [];
+    const params = [];
     
-    return { id: memoId };
-  },
-
-  // 論文IDで取得
-  findByPaperId: (paperId) => {
-    const sql = `SELECT * FROM memos 
-                 WHERE paper_id = ? 
-                 ORDER BY created_at DESC`;
+    if (updates.title !== undefined) {
+      fields.push('title = ?');
+      params.push(updates.title);
+    }
+    if (updates.authors !== undefined) {
+      fields.push('authors = ?');
+      params.push(updates.authors);
+    }
+    if (updates.year !== undefined) {
+      fields.push('year = ?');
+      params.push(updates.year);
+    }
+    if (updates.content !== undefined) {
+      fields.push('content = ?');
+      params.push(updates.content);
+    }
     
-    return db.prepare(sql).all(paperId);
-  },
-
-  // 更新
-  update: (id, content) => {
-    const updateMemo = db.prepare(`
-      UPDATE memos 
-      SET content=?, updated_at=CURRENT_TIMESTAMP 
-      WHERE id=?
-    `);
-    const result = updateMemo.run(content, id);
+    if (fields.length === 0) {
+      console.log('[DB] 更新項目なし');
+      return;
+    }
     
-    const updateFts = db.prepare('UPDATE memos_fts SET content=? WHERE memo_id=?');
-    updateFts.run(content, id);
+    params.push(paperId);
     
-    return { changes: result.changes };
-  },
-
-  // 削除
-  delete: (id) => {
-    const deleteMemo = db.prepare('DELETE FROM memos WHERE id = ?');
-    const result = deleteMemo.run(id);
+    await this.run(`
+      UPDATE papers SET ${fields.join(', ')} WHERE id = ?
+    `, params);
     
-    const deleteFts = db.prepare('DELETE FROM memos_fts WHERE memo_id = ?');
-    deleteFts.run(id);
+    // FTS5インデックス更新
+    if (updates.title || updates.authors || updates.content) {
+      await this.run(`DELETE FROM papers_fts WHERE paper_id = ?`, [paperId]);
+      
+      const paper = await this.get(`SELECT * FROM papers WHERE id = ?`, [paperId]);
+      await this.run(`
+        INSERT INTO papers_fts (paper_id, title, authors, content)
+        VALUES (?, ?, ?, ?)
+      `, [paperId, paper.title, paper.authors, paper.content]);
+    }
     
-    return { changes: result.changes };
-  }
-};
-
-// ========== 検索 ==========
-
-const search = {
-  // 統合検索
-  fullText: (query, scope = 'all') => {
-    let results = [];
-    
-    // 英語検索（FTS5）
-    const isEnglish = /[a-zA-Z]/.test(query);
-    
-    if (scope === 'all' || scope === 'papers') {
-      if (isEnglish) {
-        // FTS5検索
-        const sql = `
-          SELECT p.paper_id, pa.title, pa.authors,
-                 snippet(p, 2, '<mark>', '</mark>', '...', 30) as snippet
-          FROM papers_fts p
-          JOIN papers pa ON p.paper_id = pa.id
-          WHERE papers_fts MATCH ?
-        `;
-        
-        try {
-          const rows = db.prepare(sql).all(query);
-          results.push(...rows.map(r => ({ type: 'paper', ...r })));
-        } catch (e) {
-          console.error('FTS5検索エラー:', e);
-        }
-      } else {
-        // 日本語LIKE検索
-        const sql = `
-          SELECT id as paper_id, title, authors,
-                 substr(content, 
-                        max(1, instr(content, ?) - 30), 
-                        60) as snippet
-          FROM papers 
-          WHERE content LIKE ?
-        `;
-        
-        const rows = db.prepare(sql).all(query, `%${query}%`);
-        results.push(...rows.map(r => ({ 
-          type: 'paper', 
-          ...r,
-          snippet: '...' + r.snippet + '...'
-        })));
+    // タグ更新
+    if (updates.tags !== undefined) {
+      await this.run(`DELETE FROM tags WHERE paper_id = ?`, [paperId]);
+      if (updates.tags.length > 0) {
+        await this.addTags(paperId, updates.tags);
       }
     }
     
-    if (scope === 'all' || scope === 'memos') {
-      if (isEnglish) {
-        // FTS5検索
-        const sql = `
-          SELECT m.memo_id, m.paper_id, p.title as paper_title,
-                 snippet(mf, 1, '<mark>', '</mark>', '...', 30) as snippet
-          FROM memos_fts mf
-          JOIN memos m ON mf.memo_id = m.id
+    console.log('[DB] 論文更新完了');
+  }
+
+  // 論文削除
+  async deletePaper(paperId) {
+    console.log(`[DB] 論文削除: ID=${paperId}`);
+    
+    // FTS5インデックスから削除
+    await this.run(`DELETE FROM papers_fts WHERE paper_id = ?`, [paperId]);
+    
+    // タグとメモはCASCADE削除される
+    await this.run(`DELETE FROM papers WHERE id = ?`, [paperId]);
+    
+    console.log('[DB] 論文削除完了');
+  }
+
+  // 検索
+  async search(query, scope = 'all') {
+    console.log(`[DB] 検索: "${query}", scope=${scope}`);
+    
+    const results = [];
+    
+    // 英語検索（FTS5）
+    if (/[a-zA-Z]/.test(query)) {
+      console.log('[DB] 英語検索（FTS5）');
+      
+      if (scope === 'all' || scope === 'papers') {
+        const paperResults = await this.all(`
+          SELECT 
+            p.id,
+            p.title,
+            p.authors,
+            snippet(papers_fts, 3, '<mark>', '</mark>', '...', 30) as snippet,
+            'paper' as type
+          FROM papers_fts
+          JOIN papers p ON papers_fts.paper_id = p.id
+          WHERE papers_fts MATCH ?
+          ORDER BY rank
+        `, [query]);
+        
+        results.push(...paperResults);
+      }
+      
+      if (scope === 'all' || scope === 'memos') {
+        const memoResults = await this.all(`
+          SELECT 
+            m.id,
+            m.paper_id,
+            p.title as paper_title,
+            snippet(memos_fts, 1, '<mark>', '</mark>', '...', 30) as snippet,
+            'memo' as type
+          FROM memos_fts
+          JOIN memos m ON memos_fts.memo_id = m.id
           JOIN papers p ON m.paper_id = p.id
           WHERE memos_fts MATCH ?
-        `;
+          ORDER BY rank
+        `, [query]);
         
-        try {
-          const rows = db.prepare(sql).all(query);
-          results.push(...rows.map(r => ({ type: 'memo', ...r })));
-        } catch (e) {
-          console.error('FTS5検索エラー:', e);
-        }
-      } else {
-        // 日本語LIKE検索
-        const sql = `
-          SELECT m.id as memo_id, m.paper_id, p.title as paper_title,
-                 substr(m.content, 
-                        max(1, instr(m.content, ?) - 30), 
-                        60) as snippet
+        results.push(...memoResults);
+      }
+    } 
+    // 日本語検索（LIKE）
+    else {
+      console.log('[DB] 日本語検索（LIKE）');
+      const likeQuery = `%${query}%`;
+      
+      if (scope === 'all' || scope === 'papers') {
+        const paperResults = await this.all(`
+          SELECT 
+            id,
+            title,
+            authors,
+            substr(content, 
+              MAX(1, instr(lower(content), lower(?)) - 30), 
+              60
+            ) as snippet,
+            'paper' as type
+          FROM papers
+          WHERE content LIKE ?
+        `, [query, likeQuery]);
+        
+        results.push(...paperResults);
+      }
+      
+      if (scope === 'all' || scope === 'memos') {
+        const memoResults = await this.all(`
+          SELECT 
+            m.id,
+            m.paper_id,
+            p.title as paper_title,
+            substr(m.content, 
+              MAX(1, instr(lower(m.content), lower(?)) - 30), 
+              60
+            ) as snippet,
+            'memo' as type
           FROM memos m
           JOIN papers p ON m.paper_id = p.id
           WHERE m.content LIKE ?
-        `;
+        `, [query, likeQuery]);
         
-        const rows = db.prepare(sql).all(query, `%${query}%`);
-        results.push(...rows.map(r => ({ 
-          type: 'memo', 
-          ...r,
-          snippet: '...' + r.snippet + '...'
-        })));
+        results.push(...memoResults);
       }
     }
     
+    console.log(`[DB] 検索完了: ${results.length}件`);
     return results;
-  },
-
-  // 検索履歴保存
-  saveHistory: (query, scope, resultCount) => {
-    const sql = `INSERT INTO search_history (query, scope, result_count) 
-                 VALUES (?, ?, ?)`;
-    db.prepare(sql).run(query, scope, resultCount);
-  },
-
-  // 履歴取得
-  getHistory: (limit = 10) => {
-    const sql = `SELECT * FROM search_history 
-                 ORDER BY searched_at DESC 
-                 LIMIT ?`;
-    
-    return db.prepare(sql).all(limit);
   }
-};
 
-// ========== タグ操作 ==========
+  // メモ追加
+  async addMemo(paperId, content) {
+    console.log(`[DB] メモ追加: Paper ID=${paperId}`);
+    
+    const result = await this.run(`
+      INSERT INTO memos (paper_id, content) VALUES (?, ?)
+    `, [paperId, content]);
+    
+    const memoId = result.lastID;
+    
+    // FTS5インデックスに追加
+    await this.run(`
+      INSERT INTO memos_fts (memo_id, content) VALUES (?, ?)
+    `, [memoId, content]);
+    
+    console.log(`[DB] メモ追加完了: ID=${memoId}`);
+    return memoId;
+  }
 
-const tags = {
-  // 全タグ取得（使用数付き）
-  findAll: () => {
-    const sql = `
+  // メモ一覧取得
+  async getMemos(paperId) {
+    console.log(`[DB] メモ一覧取得: Paper ID=${paperId}`);
+    
+    const memos = await this.all(`
+      SELECT * FROM memos
+      WHERE paper_id = ?
+      ORDER BY created_at DESC
+    `, [paperId]);
+    
+    console.log(`[DB] メモ取得完了: ${memos.length}件`);
+    return memos;
+  }
+
+  // メモ更新
+  async updateMemo(memoId, content) {
+    console.log(`[DB] メモ更新: ID=${memoId}`);
+    
+    await this.run(`
+      UPDATE memos 
+      SET content = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [content, memoId]);
+    
+    // FTS5インデックス更新
+    await this.run(`DELETE FROM memos_fts WHERE memo_id = ?`, [memoId]);
+    await this.run(`
+      INSERT INTO memos_fts (memo_id, content) VALUES (?, ?)
+    `, [memoId, content]);
+    
+    console.log('[DB] メモ更新完了');
+  }
+
+  // メモ削除
+  async deleteMemo(memoId) {
+    console.log(`[DB] メモ削除: ID=${memoId}`);
+    
+    await this.run(`DELETE FROM memos_fts WHERE memo_id = ?`, [memoId]);
+    await this.run(`DELETE FROM memos WHERE id = ?`, [memoId]);
+    
+    console.log('[DB] メモ削除完了');
+  }
+
+  // 全タグ取得（使用頻度付き）
+  async getAllTags() {
+    console.log('[DB] 全タグ取得');
+    
+    const tags = await this.all(`
       SELECT tag_name, COUNT(*) as count
       FROM tags
       GROUP BY tag_name
       ORDER BY count DESC, tag_name ASC
-    `;
+    `);
     
-    return db.prepare(sql).all();
-  },
-
-  // タグで論文検索
-  findPapersByTag: (tagName) => {
-    const sql = `
-      SELECT p.*, GROUP_CONCAT(t2.tag_name) as tags
-      FROM papers p
-      JOIN tags t ON p.id = t.paper_id
-      LEFT JOIN tags t2 ON p.id = t2.paper_id
-      WHERE t.tag_name = ?
-      GROUP BY p.id
-      ORDER BY p.created_at DESC
-    `;
-    
-    const rows = db.prepare(sql).all(tagName);
-    
-    return rows.map(row => ({
-      ...row,
-      tags: row.tags ? row.tags.split(',') : []
-    }));
+    console.log(`[DB] タグ取得完了: ${tags.length}件`);
+    return tags;
   }
-};
 
-module.exports = { initDB, papers, memos, search, tags };
+  // データベースクローズ
+  close() {
+    console.log('[DB] データベースクローズ');
+    this.db.close();
+  }
+}
+
+module.exports = Database;

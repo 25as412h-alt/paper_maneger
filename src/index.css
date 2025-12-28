@@ -1,0 +1,46 @@
+/* src/index.css - Tailwind CSS設定 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* カスタムスタイル */
+mark {
+  @apply bg-yellow-400 text-gray-900 px-1 rounded;
+}
+
+/* スクロールバーのスタイリング */
+::-webkit-scrollbar {
+  width: 12px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-gray-800;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gray-600 rounded-lg;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-500;
+}
+
+/* テキストエリアの行番号表示風スタイル */
+textarea {
+  font-family: 'Courier New', Courier, monospace;
+}
+
+/* リンクのホバーアニメーション */
+a {
+  @apply transition-colors duration-200;
+}
+
+/* ボタンのホバーアニメーション */
+button {
+  @apply transition-all duration-200;
+}
+
+/* カードのホバーエフェクト */
+.card-hover {
+  @apply transition-all duration-300 hover:shadow-xl hover:scale-[1.02];
+}

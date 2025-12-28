@@ -1,118 +1,58 @@
+// src/App.jsx - メインReactアプリケーション
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
-import ErrorBoundary from './components/ErrorBoundary';
-
-// ページコンポーネント
-import Dashboard from './pages/Dashboard';
-import PaperList from './pages/PaperList';
-import PaperDetail from './pages/PaperDetail';
-import PaperRegister from './pages/PaperRegister';
-import SearchResult from './pages/SearchResult';
+import Dashboard from './components/Dashboard';
+import PaperList from './components/PaperList';
+import PaperAdd from './components/PaperAdd';
+import PaperDetail from './components/PaperDetail';
+import SearchResults from './components/SearchResults';
+import Header from './components/Header';
 
 function App() {
-  // デバッグ: window.apiの存在確認
-  React.useEffect(() => {
-    console.log('[App] window.api:', window.api);
-    console.log('[App] window.api.papers:', window.api?.papers);
-    
-    if (!window.api) {
-      console.error('[App] ⚠️ window.api が未定義です！preload.jsが正しく読み込まれていない可能性があります。');
-    }
-  }, []);
+  console.log('[APP] アプリケーション初期化');
 
   return (
-    <ErrorBoundary>
-      <Router>
-        <div className="min-h-screen bg-gray-50">
-          {/* ナビゲーションバー */}
-          <Navigation />
-          
-          {/* メインコンテンツ */}
-          <main className="container mx-auto px-4 py-6">
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/papers" element={<PaperList />} />
-              <Route path="/papers/new" element={<PaperRegister />} />
-              <Route path="/papers/:id" element={<PaperDetail />} />
-              <Route path="/papers/:id/edit" element={<PaperRegister />} />
-              <Route path="/search" element={<SearchResult />} />
-            </Routes>
-          </main>
-          
-          {/* トースト通知 */}
-          <Toaster 
-            position="top-right"
-            toastOptions={{
-              duration: 3000,
-              style: {
-                background: '#363636',
-                color: '#fff',
-              },
-              success: {
-                duration: 2000,
-                iconTheme: {
-                  primary: '#10b981',
-                  secondary: '#fff',
-                },
-              },
-              error: {
-                duration: 4000,
-                iconTheme: {
-                  primary: '#ef4444',
-                  secondary: '#fff',
-                },
-              },
-            }}
-          />
-        </div>
-      </Router>
-    </ErrorBoundary>
-  );
-}
+    <Router>
+      <div className="min-h-screen bg-gray-900 text-gray-100">
+        <Header />
+        
+        <main className="container mx-auto px-4 py-6 max-w-7xl">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/papers" element={<PaperList />} />
+            <Route path="/papers/add" element={<PaperAdd />} />
+            <Route path="/papers/:id" element={<PaperDetail />} />
+            <Route path="/search" element={<SearchResults />} />
+          </Routes>
+        </main>
 
-// ナビゲーションコンポーネント
-function Navigation() {
-  const location = useLocation();
-  
-  const isActive = (path) => {
-    return location.pathname === path ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100';
-  };
-  
-  return (
-    <nav className="bg-white shadow-sm">
-      <div className="container mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
-          {/* ロゴ */}
-          <Link to="/" className="flex items-center space-x-2">
-            <span className="text-2xl">📄</span>
-            <span className="text-xl font-bold text-gray-800">Paper Manager</span>
-          </Link>
-          
-          {/* ナビゲーションリンク */}
-          <div className="flex space-x-1">
-            <Link 
-              to="/" 
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${isActive('/')}`}
-            >
-              ダッシュボード
-            </Link>
-            <Link 
-              to="/papers" 
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${isActive('/papers')}`}
-            >
-              論文一覧
-            </Link>
-            <Link 
-              to="/papers/new" 
-              className="px-4 py-2 rounded-md text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors"
-            >
-              + 新規登録
-            </Link>
-          </div>
-        </div>
+        {/* トースト通知 */}
+        <Toaster 
+          position="top-right"
+          toastOptions={{
+            duration: 3000,
+            style: {
+              background: '#1f2937',
+              color: '#f3f4f6',
+              border: '1px solid #374151'
+            },
+            success: {
+              iconTheme: {
+                primary: '#10b981',
+                secondary: '#f3f4f6'
+              }
+            },
+            error: {
+              iconTheme: {
+                primary: '#ef4444',
+                secondary: '#f3f4f6'
+              }
+            }
+          }}
+        />
       </div>
-    </nav>
+    </Router>
   );
 }
 

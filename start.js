@@ -1,87 +1,68 @@
-#!/usr/bin/env node
-
+// start.js - アプリケーション起動スクリプト
 const { spawn } = require('child_process');
 const path = require('path');
+
+console.log('='.repeat(60));
+console.log('Paper Manager - 起動スクリプト');
+console.log('='.repeat(60));
+console.log('');
+
+console.log('[起動] 環境チェック中...');
+console.log(`[起動] Node.js: ${process.version}`);
+console.log(`[起動] 作業ディレクトリ: ${process.cwd()}`);
+console.log('');
+
+// 依存関係のチェック
+console.log('[起動] 依存関係をチェック中...');
 const fs = require('fs');
+const packageJsonPath = path.join(__dirname, 'package.json');
 
-console.log('====================================');
-console.log('  Paper Manager 起動中...');
-console.log('====================================\n');
-
-// node_modulesの存在確認
-const nodeModulesPath = path.join(__dirname, 'node_modules');
-if (!fs.existsSync(nodeModulesPath)) {
-  console.error('[エラー] node_modules が見つかりません');
-  console.error('以下のコマンドを実行してください:');
-  console.error('  npm install\n');
+if (!fs.existsSync(packageJsonPath)) {
+  console.error('[エラー] package.jsonが見つかりません');
   process.exit(1);
 }
 
-// dataディレクトリの確認
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) {
-  console.log('[初期化] dataディレクトリを作成中...');
-  fs.mkdirSync(dataDir);
-  fs.mkdirSync(path.join(dataDir, 'pdfs'));
-  fs.mkdirSync(path.join(dataDir, 'backups'));
-  console.log('✅ ディレクトリを作成しました\n');
+const nodeModulesPath = path.join(__dirname, 'node_modules');
+if (!fs.existsSync(nodeModulesPath)) {
+  console.log('[起動] 依存関係がインストールされていません');
+  console.log('[起動] npm install を実行してください');
+  process.exit(1);
 }
 
-console.log('[起動] Electron を起動しています...\n');
+console.log('[起動] 依存関係: OK');
+console.log('');
 
-// ビルドファイルの確認
-const buildDir = path.join(__dirname, 'build');
-const buildIndex = path.join(buildDir, 'index.html');
+// アプリケーション起動
+console.log('[起動] Paper Managerを起動しています...');
+console.log('[起動] Webpack Dev ServerとElectronを起動中...');
+console.log('');
+console.log('='.repeat(60));
+console.log('ログ出力:');
+console.log('='.repeat(60));
+console.log('');
 
-if (!fs.existsSync(buildIndex)) {
-  console.log('[警告] Reactアプリがビルドされていません');
-  console.log('[自動] ビルドを実行しています...\n');
-  
-  // 自動的にビルド実行
-  const build = spawn('npm', ['run', 'build:app'], {
-    stdio: 'inherit',
-    shell: true,
-    cwd: __dirname
-  });
-  
-  build.on('close', (code) => {
-    if (code === 0) {
-      console.log('\n✅ ビルドが完了しました');
-      console.log('[起動] Electronを起動します...\n');
-      startElectron();
-    } else {
-      console.error('\n❌ ビルドに失敗しました');
-      process.exit(1);
-    }
-  });
-} else {
-  startElectron();
-}
+const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const child = spawn(npm, ['start'], {
+  stdio: 'inherit',
+  shell: true
+});
 
-function startElectron() {
-  // Electronを起動
-  const electron = spawn('npm', ['start'], {
-    stdio: 'inherit',
-    shell: true,
-    cwd: __dirname
-  });
+child.on('error', (error) => {
+  console.error('[エラー] 起動に失敗しました:', error);
+  process.exit(1);
+});
 
-  electron.on('error', (error) => {
-    console.error('[エラー]', error.message);
-    process.exit(1);
-  });
+child.on('exit', (code) => {
+  console.log('');
+  console.log('='.repeat(60));
+  console.log(`[終了] アプリケーションが終了しました (コード: ${code})`);
+  console.log('='.repeat(60));
+  process.exit(code);
+});
 
-  electron.on('close', (code) => {
-    if (code !== 0) {
-      console.error(`\n[エラー] プロセスが終了しました (コード: ${code})`);
-    }
-    process.exit(code);
-  });
-
-  // Ctrl+Cでの終了処理
-  process.on('SIGINT', () => {
-    console.log('\n\n[終了] アプリケーションを終了しています...');
-    electron.kill('SIGINT');
-    process.exit(0);
-  });
-}
+// Ctrl+Cのハンドリング
+process.on('SIGINT', () => {
+  console.log('');
+  console.log('[終了] 終了シグナルを受信しました');
+  child.kill('SIGINT');
+});
