@@ -1,5 +1,5 @@
 // main.js - Electronメインプロセス
-const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const Database = require('./database/db');
@@ -146,7 +146,21 @@ ipcMain.handle('paper:add', async (event, paperData) => {
     const destPath = path.join(__dirname, 'data', 'pdfs', pdfFileName);
     
     console.log(`[IPC] PDFコピー: ${paperData.pdfPath} -> ${destPath}`);
-    fs.copyFileSync(paperData.pdfPath, destPath);
+    
+    // ファイルの存在確認
+    if (!fs.existsSync(paperData.pdfPath)) {
+      console.error('[IPC] PDFファイルが見つかりません:', paperData.pdfPath);
+      return { success: false, error: 'PDFファイルが見つかりません' };
+    }
+    
+    // ファイルをコピー
+    try {
+      fs.copyFileSync(paperData.pdfPath, destPath);
+      console.log('[IPC] PDFコピー完了');
+    } catch (copyError) {
+      console.error('[IPC] PDFコピーエラー:', copyError);
+      return { success: false, error: `PDFコピーエラー: ${copyError.message}` };
+    }
     
     // データベースに登録
     const paper = {
@@ -169,6 +183,7 @@ ipcMain.handle('paper:add', async (event, paperData) => {
     return { success: true, paperId };
   } catch (error) {
     console.error('[IPC] 論文登録エラー:', error);
+    console.error('[IPC] スタックトレース:', error.stack);
     return { success: false, error: error.message };
   }
 });
@@ -247,6 +262,38 @@ ipcMain.handle('pdf:open', async (event, pdfPath) => {
     return { success: true };
   } catch (error) {
     console.error('[IPC] PDF表示エラー:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// PDFファイル選択ダイアログ
+ipcMain.handle('pdf:selectFile', async (event) => {
+  console.log('[IPC] PDFファイル選択ダイアログ表示');
+  
+  try {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      properties: ['openFile'],
+      filters: [
+        { name: 'PDF Files', extensions: ['pdf'] }
+      ],
+      title: 'PDFファイルを選択'
+    });
+    
+    if (result.canceled) {
+      console.log('[IPC] ファイル選択キャンセル');
+      return { success: false, canceled: true };
+    }
+    
+    const filePath = result.filePaths[0];
+    console.log('[IPC] ファイル選択:', filePath);
+    
+    return { 
+      success: true, 
+      filePath: filePath,
+      fileName: path.basename(filePath)
+    };
+  } catch (error) {
+    console.error('[IPC] ファイル選択エラー:', error);
     return { success: false, error: error.message };
   }
 });

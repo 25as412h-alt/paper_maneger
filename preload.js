@@ -34,6 +34,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     open: (pdfPath) => {
       console.log('[PRELOAD] pdf.open:', pdfPath);
       return ipcRenderer.invoke('pdf:open', pdfPath);
+    },
+    selectFile: () => {
+      console.log('[PRELOAD] pdf.selectFile');
+      return ipcRenderer.invoke('pdf:selectFile');
     }
   },
 

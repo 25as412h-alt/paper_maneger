@@ -16,23 +16,28 @@ function PaperAdd() {
     content: ''
   });
 
-  const handleFileSelect = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      console.log('[PAPER_ADD] PDFファイル選択:', file.name);
+  const handleFileSelect = async () => {
+    console.log('[PAPER_ADD] ファイル選択ダイアログ表示');
+    
+    try {
+      const result = await window.electronAPI.pdf.selectFile();
       
-      if (!file.name.endsWith('.pdf')) {
-        toast.error('PDFファイルを選択してください');
-        return;
+      if (result.success) {
+        console.log('[PAPER_ADD] PDFファイル選択:', result.fileName);
+        
+        setFormData({
+          ...formData,
+          pdfPath: result.filePath,
+          pdfFileName: result.fileName
+        });
+        
+        toast.success('PDFファイルを選択しました');
+      } else if (!result.canceled) {
+        toast.error('ファイル選択に失敗しました');
       }
-
-      setFormData({
-        ...formData,
-        pdfPath: file.path,
-        pdfFileName: file.name
-      });
-      
-      toast.success('PDFファイルを選択しました');
+    } catch (error) {
+      console.error('[PAPER_ADD] ファイル選択エラー:', error);
+      toast.error('ファイル選択に失敗しました');
     }
   };
 
@@ -111,15 +116,13 @@ function PaperAdd() {
               PDFファイル <span className="text-red-500">*</span>
             </label>
             <div className="flex items-center gap-4">
-              <label className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg cursor-pointer transition border border-gray-600">
-                <span>ファイルを選択</span>
-                <input
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-              </label>
+              <button
+                type="button"
+                onClick={handleFileSelect}
+                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition border border-gray-600"
+              >
+                ファイルを選択
+              </button>
               {formData.pdfFileName && (
                 <span className="text-gray-400 flex items-center gap-2">
                   📄 {formData.pdfFileName}

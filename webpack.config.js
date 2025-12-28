@@ -53,7 +53,15 @@ module.exports = {
   devServer: {
     port: 3000,
     hot: true,
-    historyApiFallback: true
+    historyApiFallback: true,
+    setupExitSignals: true,
+    client: {
+      logging: 'info',
+      overlay: {
+        errors: true,
+        warnings: false
+      }
+    }
   },
   devtool: 'source-map'
 };
